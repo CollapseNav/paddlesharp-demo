@@ -13,8 +13,14 @@
     <PackageReference Include="Sdcb.PaddleInference" Version="3.0.1" />
     <PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="3.1.0.54" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
-    <None Include="../model/**/**" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../images/*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../model/**/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>model\%(RecursiveDir)%(FileName)%(Extension)</Link>
+    </None>
+    <None Include="../images/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>images\%(RecursiveDir)%(FileName)%(Extension)</Link>
+    </None>
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.2" />
   </ItemGroup>

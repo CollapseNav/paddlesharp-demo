@@ -4,9 +4,9 @@ using Sdcb.PaddleOCR.Models;
 using SkiaSharp;
 
 var appPath = AppContext.BaseDirectory;
-var detPath = Path.Combine(appPath, "det");
-var recPath = Path.Combine(appPath, "rec");
-var clsPath = Path.Combine(appPath, "cls");
+var detPath = Path.Combine(appPath, "model/det");
+var recPath = Path.Combine(appPath, "model/rec");
+var clsPath = Path.Combine(appPath, "model/cls");
 
 FullOcrModel model = new FullOcrModel(
     DetectionModel.FromDirectory(detPath, ModelVersion.V5),
@@ -19,7 +19,7 @@ using (PaddleOcrAll all = new PaddleOcrAll(model)
     AllowRotateDetection = true,
 })
 {
-    string imagePath = "demo.png";
+    string imagePath = Path.Combine(appPath, "images/handwrite.jpg");
     using (Mat src = Cv2.ImRead(imagePath))
     {
         PaddleOcrResult result = all.Run(src);

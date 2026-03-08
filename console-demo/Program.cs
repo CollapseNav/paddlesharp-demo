@@ -1,4 +1,5 @@
-﻿using OpenCvSharp;
+﻿using System.Diagnostics;
+using OpenCvSharp;
 using Sdcb.PaddleOCR;
 using Sdcb.PaddleOCR.Models;
 using SkiaSharp;
@@ -8,37 +9,108 @@ var detPath = Path.Combine(appPath, "model/det");
 var recPath = Path.Combine(appPath, "model/rec");
 var clsPath = Path.Combine(appPath, "model/cls");
 
-FullOcrModel model = new FullOcrModel(
-    DetectionModel.FromDirectory(detPath, ModelVersion.V5),
-    ClassificationModel.FromDirectory(clsPath),
-    RecognizationModel.FromDirectoryV5(recPath));
+OneByOne();
 
-using (PaddleOcrAll all = new PaddleOcrAll(model)
+
+/// <summary>
+/// 将三个模型拆分开一个一个使用
+/// </summary>
+void OneByOne()
 {
-    Enable180Classification = true,
-    AllowRotateDetection = true,
-})
-{
-    string imagePath = Path.Combine(appPath, "images/handwrite.jpg");
-    using (Mat src = Cv2.ImRead(imagePath))
+    using var detModel = new PaddleOcrDetector(DetectionModel.FromDirectory(detPath, ModelVersion.V5));
+    using var recModel = new PaddleOcrRecognizer(RecognizationModel.FromDirectoryV5(recPath));
+    using var clsModel = new PaddleOcrClassifier(ClassificationModel.FromDirectory(clsPath));
+    string imagePath = Path.Combine(appPath, "images/demo.png");
+    using Mat src = Cv2.ImRead(imagePath);
+    // 首先检测文字区域
+    var result = detModel.Run(src);
+    foreach (var region in result)
     {
-        PaddleOcrResult result = all.Run(src);
-        foreach (PaddleOcrResultRegion region in result.Regions)
+        // 获取点计算面积
+        Point[] pts = region.Points().Select(p => new Point(p.X, p.Y)).ToArray();
+        var area = GetArea(pts);
+        if (area < 800)
+            continue;
+        // 裁剪出文字区域（旋转）
+        Mat roi = PaddleOcrAll.GetRotateCropImage(src, region);
+        var clsResult = clsModel.Run(roi);
+        // 识别文字
+        var recResult = recModel.Run(clsResult);
+        if (string.IsNullOrEmpty(recResult.Text))
+            continue;
+        // 画框
+        Cv2.Polylines(src, new[] { pts }, isClosed: true, color: Scalar.Red, thickness: 2);
+        // 写字
+        if (!string.IsNullOrEmpty(recResult.Text))
+            DrawChineseTextSafe(src, recResult.Text, pts[0], 20, Scalar.Blue);
+    }
+    using (new Window("OCR Debug", src))
+    {
+        Cv2.WaitKey();
+    }
+}
+
+/// <summary>
+/// 使用包中的all一次性识别
+/// </summary>
+void UseAll()
+{
+    FullOcrModel model = new FullOcrModel(
+        DetectionModel.FromDirectory(detPath, ModelVersion.V5),
+        ClassificationModel.FromDirectory(clsPath),
+        RecognizationModel.FromDirectoryV5(recPath));
+    using (PaddleOcrAll all = new PaddleOcrAll(model)
+    {
+        Enable180Classification = true,
+        AllowRotateDetection = true,
+    })
+    {
+        string imagePath = Path.Combine(appPath, "images/demo.png");
+        using (Mat src = Cv2.ImRead(imagePath))
         {
-            OpenCvSharp.Point[] pts = region.Rect.Points().Select(p => new OpenCvSharp.Point(p.X, p.Y)).ToArray();
-            Cv2.Polylines(src, new[] { pts }, isClosed: true, color: Scalar.Red, thickness: 2);
-            if (!string.IsNullOrEmpty(region.Text))
-                DrawChineseTextSafe(src, region.Text, pts[0], 20, Scalar.Blue);
-            Console.WriteLine(region.Text);
-        }
-        using (new Window("OCR Debug", src))
-        {
-            Cv2.WaitKey();
+            PaddleOcrResult result = all.Run(src);
+            foreach (PaddleOcrResultRegion region in result.Regions)
+            {
+                // 获取点计算面积
+                Point[] pts = region.Rect.Points().Select(p => new Point(p.X, p.Y)).ToArray();
+                var area = GetArea(pts);
+                if (area < 800 || string.IsNullOrEmpty(region.Text))
+                    continue;
+                // 画框
+                Cv2.Polylines(src, new[] { pts }, isClosed: true, color: Scalar.Red, thickness: 2);
+                // 写字
+                if (!string.IsNullOrEmpty(region.Text))
+                    DrawChineseTextSafe(src, region.Text, pts[0], 20, Scalar.Blue);
+            }
+            using (new Window("OCR Debug", src))
+            {
+                Cv2.WaitKey();
+            }
         }
     }
 }
 
-static void DrawChineseTextSafe(Mat mat, string text, Point pos, int fontSize, Scalar color)
+
+
+/// <summary>
+/// 计算面积，用于筛选掉太小的轮廓
+/// </summary>
+/// <param name="points"></param>
+double GetArea(Point[] points)
+{
+    if (points.Length < 4)
+        return 0;
+    double area = 0;
+    int j = points.Length - 1;
+    for (int i = 0; i < points.Length; i++)
+    {
+        area += (points[j].X + points[i].X) * (points[j].Y - points[i].Y);
+        j = i;
+    }
+    return Math.Abs(area / 2.0);
+}
+
+void DrawChineseTextSafe(Mat mat, string text, Point pos, int fontSize, Scalar color)
 {
     using Mat bgraMat = new Mat();
     bool is3Channel = mat.Channels() == 3;
